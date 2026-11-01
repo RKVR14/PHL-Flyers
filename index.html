@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mimir Practice Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: one lectern column under a tab strip — 1 Database → 2 Images → 3 Play */
+:root{
+  --bg:#eef1f6; --surface:#ffffff; --sunk:#e3e8f0; --line:#cfd6e2;
+  --ink:#172033; --muted:#5a6578;
+  --accent:#e09a12; --accent-ink:#3b2600; --accent-soft:#fbecc8;
+  --good:#1f8a5b; --good-soft:#d9f1e5; --bad:#c2413a; --bad-soft:#f8dedc; --info:#2f6fb5; --info-soft:#dde9f7;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1522; --surface:#18202f; --sunk:#111827; --line:#2a3548;
+  --ink:#e8edf6; --muted:#97a3b8;
+  --accent:#f2b13a; --accent-ink:#2a1b00; --accent-soft:#3a2d12;
+  --good:#4cc08a; --good-soft:#163828; --bad:#ef7b72; --bad-soft:#3d1e1c; --info:#7fb2ec; --info-soft:#18294a; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 56px}
+img{max-width:100%}
+.wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font:800 clamp(22px,4vw,30px)/1.1 var(--f-display);margin:0;letter-spacing:-.01em}
+h1 span{color:var(--accent)}
+h2{font:700 19px/1.25 var(--f-display);margin:0;text-wrap:balance}
+h3{font:700 15px/1.3 var(--f-body);margin:0}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font:700 11px var(--f-mono);letter-spacing:.04em;padding:3px 9px;border-radius:99px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.on{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--accent-soft);color:var(--ink)}
+.pill.y{background:var(--good-soft);color:var(--good)}.pill.n{background:var(--bad-soft);color:var(--bad)}.pill.m{background:var(--accent-soft);color:var(--ink)}
+nav.tabs{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:12px;overflow-x:auto}
+nav.tabs a{flex:1;min-width:max-content;text-align:center;padding:9px 14px;border-radius:9px;color:var(--muted);text-decoration:none;font-weight:700}
+nav.tabs a b{font:700 12px var(--f-mono);margin-right:6px;opacity:.7}
+nav.tabs a.cur{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:18px}
+button,.btn{font:700 15px var(--f-body);border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;white-space:nowrap}
+button:hover,.btn:hover{border-color:var(--muted)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.good{background:var(--good-soft);border-color:var(--good);color:var(--good)}
+button.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+button.small{font-size:13px;padding:5px 10px;border-radius:8px}
+button:disabled{opacity:.45;cursor:not-allowed}
+kbd{font:500 11px var(--f-mono);border:1px solid currentColor;border-radius:4px;padding:0 5px;opacity:.7}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row.between{justify-content:space-between}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+label.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+label.field>span{letter-spacing:.05em;text-transform:uppercase;font-size:11px;font-weight:700;color:var(--muted)}
+input[type=text],input[type=number],input[type=search],select,textarea{font:16px var(--f-body);padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:100%;min-width:0}
+textarea{min-height:180px;font:13px/1.45 var(--f-mono);background:var(--sunk)}
+label.check{display:flex;align-items:center;gap:10px;font-size:15px}
+label.check input{width:18px;height:18px;accent-color:var(--accent)}
+.hint{font-size:13px;color:var(--muted)}
+.note{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--info-soft);color:var(--ink)}
+.note.err{background:var(--bad-soft)}
+.note.ok{background:var(--good-soft)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:24px 16px;text-align:center;background:var(--sunk);color:var(--muted)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.drop strong{color:var(--ink)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:700 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--sunk);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num{font:500 13px var(--f-mono);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.q{min-width:220px}
+td input[type=text],td select{font-size:14px;padding:5px 8px}
+details{border:1px solid var(--line);border-radius:12px;padding:12px 16px;background:var(--surface)}
+details summary{cursor:pointer;font-weight:700}
+details ol{padding-left:20px;margin:10px 0 0;display:flex;flex-direction:column;gap:6px;font-size:15px}
+code{font:13px var(--f-mono);background:var(--sunk);padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+.seg{display:inline-flex;background:var(--sunk);border-radius:10px;padding:3px;gap:3px}
+.seg button{border:0;background:transparent;color:var(--muted);padding:7px 14px}
+.seg button.cur{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+
+/* opponents */
+.opps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.opp{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--sunk)}
+.stepper{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:14px}
+.stepper .ctl{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.stepper .ctl output{font:700 15px var(--f-mono);min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
+.stepper .ctl button{width:30px;height:30px;padding:0;border-radius:8px}
+.bar3{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--line)}
+.bar3 i{display:block;height:100%}
+.bar3 .r{background:var(--good)}.bar3 .p{background:var(--accent)}.bar3 .w{background:var(--bad)}
+
+/* play */
+.scorebar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.meta{font:500 13px var(--f-mono);color:var(--muted);letter-spacing:.04em;text-transform:uppercase;font-variant-numeric:tabular-nums}
+.meta b{color:var(--ink)}
+.score{font:800 22px var(--f-display);font-variant-numeric:tabular-nums}
+.score small{font:500 13px var(--f-mono);color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.timer{height:6px;background:var(--sunk)}
+.timer i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left}
+.timer.low i{background:var(--bad)}
+.qbody{padding:clamp(18px,4vw,32px);display:flex;flex-direction:column;gap:16px}
+.qnum{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.badge{font:800 15px var(--f-mono);background:var(--ink);color:var(--surface);border-radius:8px;padding:4px 10px;font-variant-numeric:tabular-nums}
+.clock{font:700 20px var(--f-mono);font-variant-numeric:tabular-nums;margin-left:auto}
+.clock.low{color:var(--bad)}
+.qtext{font:400 clamp(19px,2.6vw,24px)/1.5 var(--f-body);white-space:pre-wrap;overflow-wrap:anywhere;max-width:68ch}
+.qimg{max-height:440px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:var(--sunk);align-self:flex-start}
+.answer{border-top:1px dashed var(--line);background:var(--accent-soft);padding:16px clamp(18px,4vw,32px);display:flex;flex-direction:column;gap:10px}
+.lab{font:700 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.anstxt{font:700 clamp(19px,2.6vw,24px)/1.4 var(--f-display);white-space:pre-wrap;overflow-wrap:anywhere}
+.tagrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.controls .grp{display:flex;gap:10px;flex-wrap:wrap}
+.dots{display:flex;flex-wrap:wrap;gap:5px}
+.dots button{width:24px;height:24px;padding:0;border-radius:6px;font:500 10px var(--f-mono);background:var(--sunk);color:var(--muted);border-color:transparent}
+.dots button.cur{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.dots button.y{background:var(--good);color:var(--surface)}
+.dots button.n{background:var(--bad);color:var(--surface)}
+.dots button.m{background:var(--accent);color:var(--accent-ink)}
+
+/* sim table */
+.seats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:560px){.seats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.seat{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);display:flex;flex-direction:column;gap:2px;min-width:0}
+.seat .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat .pts{font:800 22px var(--f-display);font-variant-numeric:tabular-nums}
+.seat .st{font:500 12px var(--f-mono);color:var(--muted);min-height:18px}
+.seat.dir{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.seat.turn{background:var(--accent-soft)}
+.seat.me .nm::after{content:" (you)";color:var(--muted);font-weight:400}
+.simlog{display:flex;flex-direction:column;gap:4px;font-size:15px}
+.simlog div{display:flex;gap:8px;align-items:baseline}
+.simlog .r{color:var(--good)}.simlog .w{color:var(--bad)}.simlog .p{color:var(--muted)}
+
+/* images */
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.thumb{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--sunk);display:flex;flex-direction:column}
+.thumb img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:var(--line)}
+.thumb div{padding:6px 8px;display:flex;flex-direction:column;gap:6px;font-size:12px;min-width:0}
+.thumb .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.big{font:800 clamp(38px,8vw,60px)/1 var(--f-display);font-variant-numeric:tabular-nums}
+.big small{font:500 18px var(--f-mono);color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-weight:700;z-index:30;max-width:calc(100% - 32px)}
+.modal{position:fixed;inset:0;background:rgba(10,14,22,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal .panel{width:min(640px,100%)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mimir <span>Practice</span> Runner</h1>
+    <div class="pills"><span class="pill" id="pillMs">Excel: not connected</span><span class="pill" id="pillImgur">Imgur: not connected</span><span class="pill" id="pillPending" hidden></span></div>
+  </header>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#database" data-tab="database"><b>1</b>Database</a>
+    <a href="#images" data-tab="images"><b>2</b>Images</a>
+    <a href="#play" data-tab="play"><b>3</b>Play</a>
+  </nav>
+
+  <!-- ===================== DATABASE ===================== -->
+  <section id="tab-database" class="stack" hidden>
+    <div class="panel">
+      <div class="row between"><h2>Microsoft account</h2><span class="hint" id="msWho"></span></div>
+      <div class="grid">
+        <label class="field"><span>Application (client) ID</span><input type="text" id="msClient" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off"></label>
+      </div>
+      <div class="row">
+        <button class="primary" id="msSignIn">Sign in to OneDrive</button>
+        <button id="msSignOut" hidden>Sign out</button>
+      </div>
+      <div id="msNote"></div>
+    </div>
+
+    <div class="panel" id="wbPanel">
+      <h2>Your question database</h2>
+      <div class="row">
+        <input type="search" id="fileQ" placeholder="Search OneDrive for your .xlsx (e.g. quiz)" style="flex:1;min-width:200px">
+        <button id="fileSearch">Search</button>
+      </div>
+      <div id="fileResults" class="stack" style="gap:6px"></div>
+      <div class="grid">
+        <label class="field"><span>Workbook</span><input type="text" id="wbName" readonly placeholder="Pick a file above"></label>
+        <label class="field"><span>Sheet</span><select id="wbSheet"></select></label>
+        <label class="field"><span>Excel table (optional)</span><select id="wbTable"></select></label>
+      </div>
+      <div class="row"><button id="wbRead">Read headers</button><span class="hint" id="wbInfo"></span></div>
+      <div class="tablewrap" id="mapWrap" hidden><table><thead><tr><th>Column</th><th>Header</th><th>Fills with</th><th>Example</th></tr></thead><tbody id="mapBody"></tbody></table></div>
+      <span class="hint">Using an Excel table keeps your formatting and the Done? checkbox on new rows. Without one, new rows go below the last used row and copy the format of the row above.</span>
+    </div>
+
+    <div class="panel">
+      <div class="row between"><h2>Waiting to save</h2><label class="check"><input type="checkbox" id="autoSync" checked> Save to Excel after every set</label></div>
+      <div id="syncNote"></div>
+      <div class="tablewrap" id="pendWrap"><table><thead><tr><th>Result</th><th>Question</th><th>Answer</th><th>Topic</th><th>SubTopic</th><th></th></tr></thead><tbody id="pendBody"></tbody></table></div>
+      <div class="row">
+        <button class="primary" id="syncNow">Save to Excel now</button>
+        <button id="copyRows">Copy rows for Excel</button>
+        <span class="confirm" id="discardBox"><button id="discardAll">Discard all</button></span>
+      </div>
+    </div>
+
+    <details>
+      <summary>One-time setup: Microsoft app + hosting</summary>
+      <ol>
+        <li>Put this <code>index.html</code> in a GitHub repository and turn on GitHub Pages (Settings → Pages → deploy from branch). Your site address looks like <code>https://yourname.github.io/quiz/</code>.</li>
+        <li>Go to <code>portal.azure.com</code> → <b>App registrations</b> → <b>New registration</b>. Supported account types: <b>Personal Microsoft accounts only</b>. If the portal asks, create the free Azure account; app registrations cost nothing.</li>
+        <li>Redirect URI: platform <b>Single-page application (SPA)</b>, address = this page's exact address: <code id="myUrl"></code></li>
+        <li>Copy the <b>Application (client) ID</b> into the box above and press Sign in. Approve the OneDrive permission when asked.</li>
+        <li>Optional but recommended: in Excel, click inside your data and press <b>Ctrl+T</b> to make it a table, then pick that table here.</li>
+      </ol>
+    </details>
+  </section>
+
+  <!-- ===================== IMAGES ===================== -->
+  <section id="tab-images" class="stack" hidden>
+    <div class="panel">
+      <div class="row between"><h2>Imgur account</h2><span class="hint" id="imgWho"></span></div>
+      <div class="grid"><label class="field"><span>Imgur client ID</span><input type="text" id="imgClient" autocomplete="off" placeholder="e.g. 1a2b3c4d5e6f7a8"></label></div>
+      <div class="row"><button class="primary" id="imgConnect">Connect Imgur</button><button id="imgDisconnect" hidden>Disconnect</button></div>
+      <div id="imgNote"></div>
+      <details>
+        <summary>Getting an Imgur client ID</summary>
+        <ol>
+          <li>Sign in at imgur.com, then open <code>api.imgur.com/oauth2/addclient</code>.</li>
+          <li>Authorization type: <b>OAuth 2 authorization with a callback URL</b>. Callback URL: <code id="myUrl2"></code></li>
+          <li>Copy the Client ID here and press Connect. Imgur keeps you signed in for about a month.</li>
+        </ol>
+      </details>
+    </div>
+    <div class="panel" id="albumPanel">
+      <h2>Album</h2>
+      <div class="row">
+        <select id="albumSel" style="flex:1;min-width:200px"></select>
+        <button id="albumRefresh">Refresh</button>
+      </div>
+      <div class="row">
+        <input type="text" id="albumNew" placeholder="New album name, e.g. ICC S5 Week 3" style="flex:1;min-width:200px">
+        <button id="albumCreate">Create album</button>
+      </div>
+      <div class="drop" id="imgDrop"><strong>Drop images here, paste with Ctrl+V, or</strong> <button id="imgPick" class="small">choose files</button><input type="file" id="imgFile" accept="image/*" multiple hidden></div>
+      <div id="upQueue" class="stack" style="gap:4px"></div>
+      <div class="row between"><h3 id="albumCount">Album images</h3><button id="copyAllLinks" class="small">Copy all links</button></div>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PLAY ===================== -->
+  <section id="tab-play" hidden>
+    <!-- setup -->
+    <div id="pSetup" class="stack">
+      <div class="panel">
+        <div class="drop" id="setDrop"><div><strong>Drop a .tsv, .csv or .xlsx question set</strong></div><div>Mimir / Topic Slayer / Pickit / Listem / Qbid, or anything with question and answer columns</div></div>
+        <div class="row">
+          <button id="setLoad">Load file</button><button id="setPaste">Paste from Sheets</button><button id="setSample">Sample set</button>
+          <input type="file" id="setFile" accept=".tsv,.csv,.txt,.xlsx,.xls" hidden>
+        </div>
+        <div class="hint" id="setStatus"></div>
+        <div class="grid">
+          <label class="field"><span>Set name</span><input type="text" id="setName" placeholder="ICC S5 Week 3"></label>
+          <label class="field"><span>Set link (fills Link column)</span><input type="text" id="setLink" placeholder="https://drive.google.com/…"></label>
+          <label class="field"><span>Round</span><select id="selRound"></select></label>
+          <label class="field"><span>Timer (seconds, 0 = off)</span><input type="number" id="inpTimer" min="0" max="600" step="5" value="30"></label>
+        </div>
+        <div class="row"><label class="check"><input type="checkbox" id="chkShuffle"> Shuffle order</label></div>
+        <div class="tablewrap" id="previewWrap"><table><thead><tr><th>Rd</th><th>Q</th><th>Question</th><th>Answer</th></tr></thead><tbody id="preview"></tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="row between"><h2>Mode</h2><div class="seg" role="tablist"><button id="modeFree" class="cur">Free play</button><button id="modeSim">Simulated run</button></div></div>
+        <div id="freeInfo" class="hint">Every question comes to you. Mark Correct, Wrong or Missed. Wrong and missed go to your database.</div>
+        <div id="simCfg" class="stack" hidden style="gap:14px">
+          <div class="hint">Seating is shuffled at the start. Each question is directed to the next seat in turn and passes around the table until someone gets it. Each opponent rolls Right / Pass / Wrong from their odds; any percentage left over counts as a pass.</div>
+          <div class="row">
+            <label class="field" style="width:auto"><span>Generate level</span><select id="genLevel"><option>Mixed</option><option>Novice</option><option>Club</option><option>Strong</option><option>Elite</option></select></label>
+            <button id="genBtn" style="align-self:flex-end">Generate opponents</button>
+          </div>
+          <div class="opps" id="opps"></div>
+          <div class="grid">
+            <label class="field"><span>Direct points</span><input type="number" id="ptDirect" value="10"></label>
+            <label class="field"><span>Passed points</span><input type="number" id="ptPass" value="5"></label>
+            <label class="field"><span>Wrong penalty</span><input type="number" id="ptWrong" value="0" min="0"></label>
+          </div>
+        </div>
+        <div class="row between"><span class="hint">Keys: <kbd>Space</kbd> reveal · <kbd>C</kbd> correct · <kbd>W</kbd> wrong · <kbd>M</kbd> missed/pass · <kbd>→</kbd> next</span><button class="primary" id="btnStart">Start</button></div>
+      </div>
+    </div>
+
+    <!-- run -->
+    <div id="pRun" class="stack" hidden>
+      <div class="scorebar"><div class="meta" id="pMeta"></div><div class="score" id="pScore"></div></div>
+      <div class="seats" id="seats" hidden></div>
+      <article class="card">
+        <div class="timer" id="timerBar"><i id="timerFill"></i></div>
+        <div class="qbody">
+          <div class="qnum"><span class="badge" id="pBadge"></span><span class="meta" id="pRound"></span><span class="clock" id="pClock"></span></div>
+          <div class="qtext" id="pText"></div>
+          <img class="qimg" id="pImg" alt="Question image" hidden>
+          <a class="btn" id="pImgLink" target="_blank" rel="noopener" hidden style="align-self:flex-start">Open image ↗</a>
+          <div class="simlog" id="simLog" hidden></div>
+          <label class="field" id="trialWrap"><span>Your answer (optional, Enter to reveal)</span><input type="text" id="trial" autocomplete="off"></label>
+        </div>
+        <div class="answer" id="pAnswer" hidden>
+          <div><div class="lab">Answer</div><div class="anstxt" id="pAnsText"></div></div>
+          <div class="tagrow">
+            <label class="field"><span>Topic</span><input type="text" id="tagTopic" list="dlTopic"></label>
+            <label class="field"><span>SubTopic</span><input type="text" id="tagSub" list="dlSub"></label>
+          </div>
+        </div>
+      </article>
+      <div class="controls">
+        <div class="grp"><button id="bPrev">← Prev</button><button id="bPause">Pause</button></div>
+        <div class="grp" id="gReveal"><button class="primary" id="bReveal">Reveal <kbd>Space</kbd></button><button id="bPass" hidden>Pass <kbd>M</kbd></button></div>
+        <div class="grp" id="gMark" hidden><button class="good" id="bCorrect">Correct <kbd>C</kbd></button><button class="bad" id="bWrong">Wrong <kbd>W</kbd></button><button id="bMissed">Missed <kbd>M</kbd></button></div>
+        <div class="grp" id="gJudge" hidden><span class="hint">Would you have got it?</span><button class="good" id="bKnew">Knew it <kbd>C</kbd></button><button id="bDidnt">Didn't know <kbd>M</kbd></button></div>
+        <div class="grp"><button id="bNext">Next →</button><button id="bEnd">End</button></div>
+      </div>
+      <div class="dots" id="dots"></div>
+    </div>
+
+    <!-- results -->
+    <div id="pResults" class="panel" hidden>
+      <div class="row between" style="align-items:flex-end">
+        <div><div class="lab" id="rLabel">Final score</div><div class="big" id="rScore"></div></div>
+        <div class="row"><button class="primary" id="rRetry">Retry wrong + missed</button><button id="rAgain">Run again</button><button id="rSetup">Change set</button></div>
+      </div>
+      <div id="rSync"></div>
+      <div class="tablewrap" id="rStandWrap"><table><thead><tr><th>Seat</th><th>Player</th><th>Points</th><th>Right</th><th>Wrong</th><th>Passed</th></tr></thead><tbody id="rStand"></tbody></table></div>
+      <h2>Every question</h2>
+      <div class="tablewrap"><table><thead><tr><th>Rd</th><th>Q</th><th>Result</th><th>Question</th><th>Answer</th></tr></thead><tbody id="rAll"></tbody></table></div>
+    </div>
+  </section>
+</div>
+
+<datalist id="dlTopic"></datalist><datalist id="dlSub"></datalist>
+
+<div class="modal" id="pasteModal" hidden>
+  <div class="panel" role="dialog" aria-labelledby="pasteH">
+    <h2 id="pasteH">Paste data from Google Sheets</h2>
+    <div class="hint">Copy the cells (header row included) and paste below.</div>
+    <textarea id="pasteArea"></textarea>
+    <div class="row" style="justify-content:flex-end"><button id="pasteCancel">Cancel</button><button class="primary" id="pasteOk">Load data</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const S = {
+  get(k, d){ try{ const v = localStorage.getItem('mpr2.'+k); return v == null ? d : JSON.parse(v) }catch(e){ return d } },
+  set(k, v){ try{ localStorage.setItem('mpr2.'+k, JSON.stringify(v)) }catch(e){} }
+};
+let toastT;
+function toast(msg){ let t = document.querySelector('.toast'); if(!t){ t = document.createElement('div'); t.className='toast'; t.setAttribute('role','status'); document.body.appendChild(t) } t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(()=> t.hidden = true, 2600) }
+function note(el, msg, kind){ $(el).innerHTML = msg ? '<div class="note '+(kind||'')+'">'+msg+'</div>' : '' }
+async function copyText(text){ try{ await navigator.clipboard.writeText(text); return true }catch(e){ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand('copy') }catch(_){} ta.remove(); return ok } }
+const PAGE_URL = location.origin + location.pathname;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const todayISO = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') };
+const ddmmyyyy = iso => { const [y,m,d]=iso.split('-'); return d+'/'+m+'/'+y };
+const excelSerial = iso => { const [y,m,d]=iso.split('-').map(Number); return Math.round((Date.UTC(y,m-1,d) - Date.UTC(1899,11,30))/86400000) };
+const colL = n => { let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26) } return s };
+
+/* =============================== STATE =============================== */
+const cfg = Object.assign({ msClientId:'', fileId:'', fileName:'', sheet:'', table:'', headers:[], mapping:[], autoSync:true,
+  imgurClientId:'', albumId:'', topics:[], subtopics:[] }, S.get('cfg', {}));
+const saveCfg = () => S.set('cfg', cfg);
+let pending = S.get('pending', []);          // rows waiting to go to Excel
+const savePending = () => { S.set('pending', pending); renderPending() };
+
+/* =============================== TABS =============================== */
+const TABS = ['database','images','play'];
+function route(){
+  let t = (location.hash||'').slice(1);
+  if(!TABS.includes(t)) t = cfg.fileId ? 'play' : 'database';
+  TABS.forEach(x => $('tab-'+x).hidden = x !== t);
+  document.querySelectorAll('nav.tabs a').forEach(a => a.classList.toggle('cur', a.dataset.tab === t));
+}
+window.addEventListener('hashchange', route);
+
+/* ====================== MICROSOFT / EXCEL (Graph) ====================== */
+const SCOPES = ['User.Read','Files.ReadWrite'];
+let msApp = null, msAccount = null;
+async function msInit(){
+  if(!cfg.msClientId){ renderMs(); return }
+  if(!window.msal){ note('msNote','The Microsoft sign-in library did not load. Check your connection and reload.','err'); return }
+  try{
+    msApp = new msal.PublicClientApplication({ auth:{ clientId: cfg.msClientId, authority:'https://login.microsoftonline.com/consumers', redirectUri: PAGE_URL }, cache:{ cacheLocation:'localStorage' } });
+    if(msApp.initialize) await msApp.initialize();
+    const r = await msApp.handleRedirectPromise();
+    msAccount = (r && r.account) || msApp.getAllAccounts()[0] || null;
+  }catch(e){ note('msNote', 'Sign-in setup failed: '+esc(e.message||e), 'err') }
+  renderMs();
+}
+function renderMs(){
+  const on = !!msAccount;
+  $('msClient').value = cfg.msClientId;
+  $('msWho').textContent = on ? 'Signed in as '+msAccount.username : '';
+  $('msSignIn').hidden = on; $('msSignOut').hidden = !on;
+  $('wbPanel').style.opacity = on ? 1 : .55;
+  const p = $('pillMs');
+  p.className = 'pill' + (on && cfg.fileId ? ' on' : on ? ' warn' : '');
+  p.textContent = on && cfg.fileId ? 'Excel: '+cfg.fileName : on ? 'Excel: pick a file' : 'Excel: not connected';
+}
+async function msToken(){
+  if(!msApp || !msAccount) throw new Error('Sign in to OneDrive on the Database tab first.');
+  try{ return (await msApp.acquireTokenSilent({ scopes:SCOPES, account:msAccount })).accessToken }
+  catch(e){ const r = await msApp.acquireTokenPopup({ scopes:SCOPES }); msAccount = r.account; return r.accessToken }
+}
+async function graph(path, opts){
+  opts = opts || {};
+  const t = await msToken();
+  const r = await fetch('https://graph.microsoft.com/v1.0'+path, { method: opts.method||'GET', body: opts.body ? JSON.stringify(opts.body) : undefined,
+    headers:{ Authorization:'Bearer '+t, 'Content-Type':'application/json' } });
+  if(!r.ok){ let m = r.statusText; try{ const j = await r.json(); m = (j.error && j.error.message) || m }catch(e){} throw new Error(m+' ('+r.status+')') }
+  return r.status === 204 ? null : r.json();
+}
+const wbBase = () => '/me/drive/items/'+cfg.fileId+'/workbook';
+const wsBase = () => wbBase()+'/worksheets/'+encodeURIComponent(cfg.sheet);
+
+$('msClient').addEventListener('change', e => { cfg.msClientId = e.target.value.trim(); saveCfg(); msApp = null; msAccount = null; msInit() });
+$('msSignIn').onclick = async () => {
+  cfg.msClientId = $('msClient').value.trim(); saveCfg();
+  if(!cfg.msClientId){ note('msNote','Paste your Application (client) ID first. The setup steps are at the bottom of this tab.','err'); return }
+  if(!msApp) await msInit();
+  if(!msApp) return;
+  try{ const r = await msApp.loginPopup({ scopes:SCOPES }); msAccount = r.account; note('msNote',''); renderMs(); if(cfg.fileId) loadSheets(true) }
+  catch(e){ note('msNote','Sign-in did not finish: '+esc(e.message||e)+'. Check that the redirect URI in Azure is exactly <code>'+esc(PAGE_URL)+'</code> with platform “Single-page application”.','err') }
+};
+$('msSignOut').onclick = async () => { try{ await msApp.logoutPopup({ account: msAccount }) }catch(e){} msAccount = null; renderMs() };
+
+$('fileSearch').onclick = searchFiles;
+$('fileQ').addEventListener('keydown', e => { if(e.key === 'Enter') searchFiles() });
+async function searchFiles(){
+  const q = $('fileQ').value.trim() || 'xlsx';
+  $('fileResults').innerHTML = '<span class="hint">Searching…</span>';
+  try{
+    const j = await graph("/me/drive/root/search(q='"+encodeURIComponent(q.replace(/'/g,"''"))+"')?$select=id,name,parentReference,file&$top=40");
+    const files = (j.value||[]).filter(f => /\.xlsx?$/i.test(f.name));
+    $('fileResults').innerHTML = files.length ? files.map(f => '<div class="row"><button class="small" data-id="'+esc(f.id)+'" data-name="'+esc(f.name)+'">Use</button><span>'+esc(f.name)+'</span><span class="hint">'+esc(((f.parentReference||{}).path||'').replace(/^\/drive\/root:?/,'') || '/')+'</span></div>').join('') : '<span class="hint">No Excel files matched “'+esc(q)+'”.</span>';
+  }catch(e){ $('fileResults').innerHTML = '<div class="note err">'+esc(e.message)+'</div>' }
+}
+$('fileResults').onclick = e => { const b = e.target.closest('button[data-id]'); if(!b) return;
+  cfg.fileId = b.dataset.id; cfg.fileName = b.dataset.name; cfg.sheet=''; cfg.table=''; cfg.headers=[]; cfg.mapping=[]; saveCfg();
+  $('fileResults').innerHTML = ''; renderMs(); loadSheets(false) };
+
+async function loadSheets(quiet){
+  $('wbName').value = cfg.fileName || '';
+  if(!cfg.fileId) return;
+  try{
+    const ws = await graph(wbBase()+'/worksheets?$select=name');
+    const names = ws.value.map(w => w.name);
+    if(!names.includes(cfg.sheet)) cfg.sheet = names[0] || '';
+    $('wbSheet').innerHTML = names.map(n => '<option'+(n===cfg.sheet?' selected':'')+'>'+esc(n)+'</option>').join('');
+    saveCfg(); await loadTables();
+  }catch(e){ if(!quiet) $('wbInfo').textContent = e.message }
+}
+async function loadTables(){
+  try{
+    const t = await graph(wsBase()+'/tables?$select=id,name');
+    const opts = ['<option value="">No table — add below last row</option>'].concat(t.value.map(x => '<option value="'+esc(x.name)+'"'+(x.name===cfg.table?' selected':'')+'>'+esc(x.name)+'</option>'));
+    $('wbTable').innerHTML = opts.join('');
+    if(!t.value.some(x => x.name === cfg.table)) cfg.table = '';
+    saveCfg();
+  }catch(e){ $('wbTable').innerHTML = '<option value="">No table — add below last row</option>' }
+}
+$('wbSheet').onchange = e => { cfg.sheet = e.target.value; cfg.table=''; saveCfg(); loadTables() };
+$('wbTable').onchange = e => { cfg.table = e.target.value; saveCfg() };
+
+const SOURCES = [
+  ['sno','S.No (next number)'],['date','Today’s date'],['link','Set link'],['done','Done? checkbox (unticked)'],
+  ['question','Question'],['imageLink','Image link'],['image','“Yes” if it has an image'],['trial','Your answer'],
+  ['answer','Correct answer'],['cap','Answer in CAPITALS'],['topic','Topic'],['subtopic','SubTopic'],
+  ['result','Wrong / Missed'],['setname','Set name'],['blank','Leave blank']];
+function guessSource(h){
+  const s = String(h||'').toLowerCase().replace(/[^a-z?]/g,'');
+  if(/^s?no$|^sno|serial/.test(s)) return 'sno';
+  if(/date/.test(s)) return 'date';
+  if(/done/.test(s)) return 'done';
+  if(/question/.test(s)) return 'question';
+  if(/image|img|pic/.test(s)) return /link|url/.test(s) ? 'imageLink' : 'blank';
+  if(/^link|url/.test(s)) return 'link';
+  if(/trial|your|my/.test(s)) return 'trial';
+  if(/cap/.test(s)) return 'cap';
+  if(/answer|^ans/.test(s)) return 'answer';
+  if(/subtopic/.test(s)) return 'subtopic';
+  if(/topic|category/.test(s)) return 'topic';
+  if(/result|status/.test(s)) return 'result';
+  return 'blank';
+}
+$('wbRead').onclick = readHeaders;
+async function readHeaders(){
+  $('wbInfo').textContent = 'Reading…';
+  try{
+    const ur = await graph(wsBase()+'/usedRange(valuesOnly=true)?$select=address,values,rowIndex,columnIndex,rowCount');
+    let headers = (ur.values[0]||[]).map(String);
+    if(cfg.table){ const h = await graph(wbBase()+'/tables/'+encodeURIComponent(cfg.table)+'/headerRowRange?$select=values'); headers = h.values[0].map(String) }
+    const old = {}; cfg.headers.forEach((h,i) => old[h] = cfg.mapping[i]);
+    cfg.headers = headers;
+    cfg.mapping = headers.map(h => old[h] || guessSource(h));
+    collectTaxonomy(ur.values);
+    saveCfg(); renderMap();
+    const sn = nextSno(ur.values);
+    $('wbInfo').textContent = (ur.values.length-1)+' rows found · next S.No '+sn;
+  }catch(e){ $('wbInfo').textContent = e.message }
+}
+function collectTaxonomy(values){
+  const ti = cfg.mapping.indexOf('topic'), si = cfg.mapping.indexOf('subtopic');
+  const uniq = i => i < 0 ? [] : [...new Set(values.slice(1).map(r => String(r[i]||'').trim()).filter(x => x && x.length < 40))].sort();
+  if(ti >= 0) cfg.topics = uniq(ti); if(si >= 0) cfg.subtopics = uniq(si);
+  renderLists();
+}
+function renderLists(){
+  $('dlTopic').innerHTML = cfg.topics.map(t => '<option value="'+esc(t)+'">').join('');
+  $('dlSub').innerHTML = cfg.subtopics.map(t => '<option value="'+esc(t)+'">').join('');
+}
+function nextSno(values){
+  const i = cfg.mapping.indexOf('sno'); if(i < 0) return 1;
+  let mx = 0; values.slice(1).forEach(r => { const n = parseFloat(r[i]); if(isFinite(n) && n > mx) mx = n });
+  return Math.floor(mx) + 1;
+}
+const EXAMPLE = { date: todayISO(), setName:'ICC S5 W3', link:'https://drive.google.com/…', question:'Which DJ, BBC Radio 1’s longest-serving breakfast host…', imageLink:'', trial:'Moyles', answer:'Chris Moyles', topic:'Culture', subtopic:'Radio', result:'Missed' };
+function renderMap(){
+  $('mapWrap').hidden = !cfg.headers.length;
+  $('mapBody').innerHTML = cfg.headers.map((h,i) => '<tr><td class="num">'+colL(i)+'</td><td>'+esc(h)+'</td><td><select data-i="'+i+'">'+SOURCES.map(([k,l]) => '<option value="'+k+'"'+(cfg.mapping[i]===k?' selected':'')+'>'+l+'</option>').join('')+'</select></td><td class="num">'+esc(displayCell(cfg.mapping[i], EXAMPLE, 774))+'</td></tr>').join('');
+}
+$('mapBody').onchange = e => { const s = e.target.closest('select'); if(!s) return; cfg.mapping[+s.dataset.i] = s.value; saveCfg(); renderMap() };
+
+function cellValue(src, row, sno){
+  switch(src){
+    case 'sno': return sno; case 'date': return excelSerial(row.date); case 'link': return row.link||'';
+    case 'done': return false; case 'question': return row.question||''; case 'imageLink': return row.imageLink||'';
+    case 'image': return row.imageLink ? 'Yes' : ''; case 'trial': return row.trial||''; case 'answer': return row.answer||'';
+    case 'cap': return String(row.answer||'').toUpperCase(); case 'topic': return row.topic||''; case 'subtopic': return row.subtopic||'';
+    case 'result': return row.result||''; case 'setname': return row.setName||''; default: return '';
+  }
+}
+function displayCell(src, row, sno){ const v = cellValue(src, row, sno); return src==='date' ? ddmmyyyy(row.date) : src==='done' ? 'FALSE' : v }
+
+let syncing = false;
+async function syncPending(){
+  if(syncing || !pending.length) return { ok:true, n:0 };
+  if(!msAccount || !cfg.fileId || !cfg.headers.length) return { ok:false, msg:'Excel is not set up yet. Sign in, pick your workbook and read its headers on the Database tab.' };
+  syncing = true; $('syncNow').disabled = true; note('syncNote','Saving '+pending.length+' rows to '+esc(cfg.fileName)+'…');
+  const batch = pending.slice();
+  try{
+    const ur = await graph(wsBase()+'/usedRange(valuesOnly=true)?$select=values,rowIndex,columnIndex,rowCount');
+    let sno = nextSno(ur.values);
+    const values = batch.map(r => { const v = cfg.mapping.map(src => cellValue(src, r, sno)); sno++; return v });
+    if(cfg.table){
+      await graph(wbBase()+'/tables/'+encodeURIComponent(cfg.table)+'/rows/add', { method:'POST', body:{ index:null, values } });
+    } else {
+      const c0 = ur.columnIndex, r0 = ur.rowIndex + ur.rowCount;          // first empty row (0-based)
+      const lastCol = colL(c0 + cfg.headers.length - 1);
+      const addr = colL(c0)+(r0+1)+':'+lastCol+(r0+values.length);
+      const sheetQ = "'"+cfg.sheet.replace(/'/g,"''")+"'!";
+      try{ await graph(wsBase()+"/range(address='"+addr+"')/copyFrom", { method:'POST', body:{ sourceRange: sheetQ+colL(c0)+r0+':'+lastCol+r0, copyType:'Formats', skipBlanks:false, transpose:false } }) }catch(e){}
+      await graph(wsBase()+"/range(address='"+addr+"')", { method:'PATCH', body:{ values } });
+      const di = cfg.mapping.indexOf('date');
+      if(di >= 0){ const dc = colL(c0+di); try{ await graph(wsBase()+"/range(address='"+dc+(r0+1)+':'+dc+(r0+values.length)+"')", { method:'PATCH', body:{ numberFormat: values.map(()=>['dd/mm/yyyy']) } }) }catch(e){} }
+    }
+    const ids = new Set(batch.map(r => r.id));
+    pending = pending.filter(r => !ids.has(r.id)); savePending();
+    const msg = 'Saved '+batch.length+' row'+(batch.length>1?'s':'')+' to '+cfg.fileName+' at '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'.';
+    note('syncNote', esc(msg), 'ok');
+    return { ok:true, n:batch.length, msg };
+  }catch(e){
+    const msg = 'Could not save to Excel: '+e.message+'. Your rows are kept here; try again, or use Copy rows.';
+    note('syncNote', esc(msg), 'err');
+    return { ok:false, msg };
+  }finally{ syncing = false; $('syncNow').disabled = false }
+}
+$('syncNow').onclick = async () => { const r = await syncPending(); if(!r.ok) note('syncNote', esc(r.msg), 'err') };
+$('copyRows').onclick = async () => {
+  if(!pending.length) return toast('Nothing waiting to save');
+  const sno0 = 0; // S.No left for Excel to number when copying by hand
+  const text = pending.map(r => cfg.headers.length ? cfg.mapping.map(src => src==='sno' ? '' : displayCell(src, r, sno0)).join('\t')
+    : [ddmmyyyy(r.date), r.link, r.question, r.imageLink, r.answer, r.topic, r.subtopic, r.result].join('\t')).join('\n');
+  toast(await copyText(text) ? 'Copied '+pending.length+' rows. Paste into the first empty row in Excel.' : 'Copy was blocked by the browser');
+};
+$('autoSync').onchange = e => { cfg.autoSync = e.target.checked; saveCfg() };
+function resetDiscard(){ $('discardBox').innerHTML = '<button id="discardAll">Discard all</button>'; bindDiscard() }
+function bindDiscard(){ $('discardAll').onclick = () => { if(!pending.length) return;
+  $('discardBox').innerHTML = '<span>Discard '+pending.length+' rows?</span><button class="small bad" id="dYes">Discard</button><button class="small" id="dNo">Keep</button>';
+  $('dYes').onclick = () => { pending = []; savePending(); resetDiscard() }; $('dNo').onclick = resetDiscard } }
+function renderPending(){
+  $('pendWrap').hidden = !pending.length;
+  $('pendBody').innerHTML = pending.map((r,i) => '<tr><td><span class="pill '+(r.result==='Wrong'?'n':'m')+'">'+r.result+'</span></td><td class="q">'+esc(r.question.length>120 ? r.question.slice(0,120)+'…' : r.question)+'</td><td>'+esc(r.answer)+'</td><td><input type="text" list="dlTopic" data-i="'+i+'" data-f="topic" value="'+esc(r.topic)+'"></td><td><input type="text" list="dlSub" data-i="'+i+'" data-f="subtopic" value="'+esc(r.subtopic)+'"></td><td><button class="small" data-del="'+i+'" aria-label="Remove row">✕</button></td></tr>').join('');
+  if(!pending.length && !$('syncNote').innerHTML) note('syncNote','Nothing waiting. Wrong and missed questions appear here until they are saved.');
+  const p = $('pillPending'); p.hidden = !pending.length; p.className = 'pill warn'; p.textContent = pending.length+' unsaved';
+}
+$('pendBody').addEventListener('change', e => { const t = e.target; if(t.dataset.f){ pending[+t.dataset.i][t.dataset.f] = t.value; S.set('pending', pending) } });
+$('pendBody').addEventListener('click', e => { const b = e.target.closest('[data-del]'); if(b){ pending.splice(+b.dataset.del,1); savePending() } });
+
+/* =============================== IMGUR =============================== */
+let imgur = S.get('imgur', null);
+function imgurOn(){ return imgur && imgur.token && imgur.exp > Date.now() }
+(function catchImgurRedirect(){
+  const h = location.hash.slice(1);
+  if(!/access_token=/.test(h)) return;
+  const p = new URLSearchParams(h);
+  if(p.get('state') !== 'imgur') return;
+  imgur = { token:p.get('access_token'), user:p.get('account_username'), exp: Date.now() + (parseInt(p.get('expires_in'))||2419200)*1000 };
+  S.set('imgur', imgur);
+  history.replaceState(null, '', location.pathname + '#images');
+})();
+function renderImgur(){
+  const on = imgurOn();
+  $('imgClient').value = cfg.imgurClientId;
+  $('imgWho').textContent = on ? 'Connected as '+(imgur.user||'you') : '';
+  $('imgConnect').hidden = on; $('imgDisconnect').hidden = !on;
+  $('albumPanel').hidden = !on;
+  const p = $('pillImgur'); p.className = 'pill'+(on?' on':''); p.textContent = on ? 'Imgur: '+(imgur.user||'connected') : 'Imgur: not connected';
+}
+$('imgClient').addEventListener('change', e => { cfg.imgurClientId = e.target.value.trim(); saveCfg() });
+$('imgConnect').onclick = () => {
+  cfg.imgurClientId = $('imgClient').value.trim(); saveCfg();
+  if(!cfg.imgurClientId) return note('imgNote','Paste your Imgur client ID first.','err');
+  location.href = 'https://api.imgur.com/oauth2/authorize?client_id='+encodeURIComponent(cfg.imgurClientId)+'&response_type=token&state=imgur';
+};
+$('imgDisconnect').onclick = () => { imgur = null; S.set('imgur', null); renderImgur() };
+async function imgurApi(path, opts){
+  opts = opts || {};
+  const r = await fetch('https://api.imgur.com/3/'+path, { method: opts.method||'GET', body: opts.body, headers:{ Authorization:'Bearer '+imgur.token } });
+  let j = null; try{ j = await r.json() }catch(e){}
+  if(!r.ok || (j && j.success === false)){ if(r.status === 401 || r.status === 403){ imgur = null; S.set('imgur', null); renderImgur() } throw new Error(((j && j.data && (j.data.error && (j.data.error.message || j.data.error))) || r.statusText || 'Imgur request failed')+' ('+r.status+')') }
+  return j.data;
+}
+async function loadAlbums(){
+  try{
+    const al = await imgurApi('account/me/albums');
+    if(!al.some(a => a.id === cfg.albumId)) cfg.albumId = al[0] ? al[0].id : '';
+    $('albumSel').innerHTML = al.length ? al.map(a => '<option value="'+esc(a.id)+'"'+(a.id===cfg.albumId?' selected':'')+'>'+esc(a.title||'Untitled')+' ('+a.images_count+')</option>').join('') : '<option value="">No albums yet — create one below</option>';
+    saveCfg(); loadAlbumImages();
+  }catch(e){ note('imgNote', esc(e.message), 'err') }
+}
+let albumImages = [];
+async function loadAlbumImages(){
+  if(!cfg.albumId){ albumImages = []; renderThumbs(); return }
+  try{ albumImages = await imgurApi('album/'+cfg.albumId+'/images'); renderThumbs() }catch(e){ note('imgNote', esc(e.message), 'err') }
+}
+const thumbOf = link => link.replace(/(\.[a-z]+)$/i, 'm$1');
+function renderThumbs(){
+  $('albumCount').textContent = albumImages.length + ' image' + (albumImages.length===1?'':'s') + ' in album';
+  $('thumbs').innerHTML = albumImages.map((im,i) => '<div class="thumb"><a href="'+esc(im.link)+'" target="_blank" rel="noopener"><img loading="lazy" src="'+esc(thumbOf(im.link))+'" alt="'+esc(im.title||im.name||'')+'"></a><div><span class="t" title="'+esc(im.title||im.name||'')+'">'+esc(im.title||im.name||im.id)+'</span><button class="small" data-copy="'+i+'">Copy link</button></div></div>').join('');
+}
+$('thumbs').onclick = async e => { const b = e.target.closest('[data-copy]'); if(!b) return; toast(await copyText(albumImages[+b.dataset.copy].link) ? 'Link copied' : 'Copy was blocked') };
+$('copyAllLinks').onclick = async () => { if(!albumImages.length) return toast('Album is empty'); toast(await copyText(albumImages.map(im => (im.title||im.name||'')+'\t'+im.link).join('\n')) ? 'Copied '+albumImages.length+' links (name ⇥ link)' : 'Copy was blocked') };
+$('albumSel').onchange = e => { cfg.albumId = e.target.value; saveCfg(); loadAlbumImages() };
+$('albumRefresh').onclick = loadAlbums;
+$('albumCreate').onclick = async () => {
+  const name = $('albumNew').value.trim(); if(!name) return toast('Type an album name first');
+  try{ const fd = new FormData(); fd.append('title', name); fd.append('privacy','hidden');
+    const a = await imgurApi('album', { method:'POST', body:fd }); cfg.albumId = a.id; saveCfg(); $('albumNew').value=''; toast('Album created'); loadAlbums() }
+  catch(e){ note('imgNote', esc(e.message), 'err') }
+};
+$('imgPick').onclick = () => $('imgFile').click();
+$('imgFile').onchange = e => { uploadFiles([...e.target.files]); e.target.value = '' };
+async function uploadFiles(files){
+  files = files.filter(f => /^image\//.test(f.type));
+  if(!files.length) return;
+  if(!imgurOn()) return toast('Connect Imgur first');
+  if(!cfg.albumId) return toast('Create or pick an album first');
+  for(const f of files){
+    const line = document.createElement('div'); line.className = 'hint'; line.textContent = 'Uploading '+(f.name||'pasted image')+'…'; $('upQueue').prepend(line);
+    try{
+      const fd = new FormData(); fd.append('image', f); fd.append('type','file'); fd.append('album', cfg.albumId); fd.append('title', (f.name||'pasted').replace(/\.[^.]+$/,''));
+      const d = await imgurApi('image', { method:'POST', body:fd });
+      line.innerHTML = '✓ '+esc(f.name||'pasted image')+' → <code>'+esc(d.link)+'</code>';
+      albumImages.push(d); renderThumbs();
+    }catch(e){ line.innerHTML = '<span style="color:var(--bad)">✕ '+esc(f.name||'image')+': '+esc(e.message)+'</span>' }
+  }
+}
+document.addEventListener('paste', e => {
+  if($('tab-images').hidden) return;
+  const files = [...(e.clipboardData && e.clipboardData.files || [])]; if(files.length){ e.preventDefault(); uploadFiles(files) }
+});
+dropZone($('imgDrop'), () => !$('tab-images').hidden, files => uploadFiles(files));
+
+/* =============================== QUESTION SETS =============================== */
+const SAMPLE = [
+ ['roundNo','questionNo','questionText','imageUrl','answerText','topic','subtopic'],
+ ['1','1','This element, named after the Greek word for “moon”, was discovered by Berzelius in 1817 alongside tellurium, whose name means “earth”. Name it.','','Selenium','Science','Chemistry'],
+ ['1','2','Which hockey trophy, first awarded in 1893, was donated by a Governor General of Canada who never saw a game for it?','','Stanley Cup','Sports','Ice hockey'],
+ ['1','3','In 1965 a Bell Labs engineer coined the term for the smallest unit of an image. Its name contracts which two words?','','Picture element (pixel)','Science','Technology'],
+ ['1','4','Which Tamil poet-saint’s “Tirukkural” is divided into three books on virtue, wealth and love?','','Thiruvalluvar','Culture','Literature'],
+ ['2','1','This 1930 Nobel laureate studied light scattering in liquids in Calcutta. Name the effect he discovered.','','Raman effect','Science','Physics'],
+ ['2','2','Perovskite is named after Lev Perovski. In which mountain range was CaTiO3 first found in 1839?','','Ural Mountains','Science','Geology'],
+ ['2','3','Which DJ became BBC Radio 1’s longest-serving breakfast show host?','','Chris Moyles','Culture','Radio'],
+ ['2','4','Mozambique’s only Olympic gold medal came in Sydney 2000 in which athletics event?','','800 metres (Maria Mutola)','Sports','Athletics']
+];
+let rows = [], isSample = false;
+function parseDelimited(text){
+  text = text.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
+  const first = text.split('\n')[0] || '';
+  const delim = first.split('\t').length >= 2 ? '\t' : ',';
+  const out = []; let row = [], f = '', q = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(q){ if(c === '"'){ if(text[i+1] === '"'){ f += '"'; i++ } else q = false } else f += c }
+    else if(c === '"' && f === ''){ q = true }
+    else if(c === delim){ row.push(f); f = '' }
+    else if(c === '\n'){ row.push(f); out.push(row); row = []; f = '' }
+    else f += c;
+  }
+  if(f !== '' || row.length){ row.push(f); out.push(row) }
+  return out.filter(r => r.some(x => String(x).trim() !== ''));
+}
+function mapColumns(table){
+  const head = table[0].map(h => String(h).trim().toLowerCase().replace(/[\s_\-.#?]/g,''));
+  const find = tests => head.findIndex(h => tests.some(t => t.test(h)));
+  const hasHeader = head.some(h => /question|answer|^ans|^q$|^a$|round|image|img|topic/.test(h));
+  let m;
+  if(hasHeader){
+    m = { round: find([/^round(no|num|number)?$/,/^rd$/,/^r$/]), qno: find([/^(question|q)(no|num|number)$/,/^qno$/,/^no$/,/^sno$/,/^$/]),
+          text: find([/^(question|q)(text)?$/,/questiontext/,/^question/]), img: find([/image|img|pic|photo|visual/]),
+          ans: find([/^(answer|ans|a)(text)?$/,/^correctanswer$/,/answer/]), topic: find([/^topic$|^category$/]), sub: find([/^subtopic$|^subcategory$/]) };
+    table = table.slice(1);
+  } else {
+    const n = table[0].length;
+    m = n >= 5 ? {round:0,qno:1,text:2,img:3,ans:4} : n === 4 ? {round:-1,qno:0,text:1,img:2,ans:3} : n === 3 ? {round:-1,qno:0,text:1,img:-1,ans:2} : {round:-1,qno:-1,text:0,img:-1,ans:1};
+    m.topic = -1; m.sub = -1;
+  }
+  const get = (r,i) => i >= 0 && r[i] != null ? String(r[i]).trim() : '';
+  const counter = {};
+  return table.map(r => { const round = get(r,m.round) || '1'; counter[round] = (counter[round]||0) + 1;
+    return { round, qno: get(r,m.qno) || String(counter[round]), text: get(r,m.text), img: get(r,m.img), ans: get(r,m.ans), topic: get(r,m.topic), sub: get(r,m.sub) } })
+    .filter(x => x.text || x.ans);
+}
+function loadTable(table, name, sample){
+  if(!table.length) return setStatus('That file has no rows. Check it is a tab- or comma-separated export.', true);
+  const parsed = mapColumns(table);
+  if(!parsed.length) return setStatus('No questions found. The set needs a question column and an answer column.', true);
+  rows = parsed; isSample = !!sample;
+  if(name) $('setName').value = name;
+  S.set('set', sample ? null : { table, name: $('setName').value });
+  renderSetSetup();
+}
+function readSetFile(f){
+  const base = f.name.replace(/\.[^.]+$/,'');
+  if(/\.xlsx?$/i.test(f.name)){
+    if(!window.XLSX) return setStatus('The spreadsheet reader did not load. Export the sheet as .tsv instead.', true);
+    const r = new FileReader();
+    r.onload = () => { try{ const wb = XLSX.read(r.result, {type:'array'}); const ws = wb.Sheets[wb.SheetNames[0]];
+      loadTable(XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''}).filter(row => row.some(x => String(x).trim())), base) }catch(e){ setStatus('Could not read that workbook: '+e.message, true) } };
+    r.readAsArrayBuffer(f);
+  } else {
+    const r = new FileReader(); r.onload = () => loadTable(parseDelimited(r.result), base); r.onerror = () => setStatus('Could not read that file.', true); r.readAsText(f);
+  }
+}
+function setStatus(msg, err){ $('setStatus').innerHTML = err ? '<span style="color:var(--bad);font-weight:700">'+esc(msg)+'</span>' : msg }
+const roundsOf = () => [...new Set(rows.map(r => r.round))];
+function renderSetSetup(){
+  const rs = roundsOf(), withImg = rows.filter(r => r.img).length;
+  setStatus(rows.length ? (isSample ? '<span class="pill m">Sample</span> ' : '') + '<b>'+rows.length+'</b> questions · '+rs.length+' round'+(rs.length>1?'s':'')+(withImg ? ' · '+withImg+' with images' : '') : 'No set loaded yet.');
+  const sel = $('selRound'), prev = sel.value;
+  sel.innerHTML = '<option value="*">All rounds</option>' + rs.map(r => '<option value="'+esc(r)+'">Round '+esc(r)+' ('+rows.filter(x => x.round === r).length+')</option>').join('');
+  if([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  $('preview').innerHTML = rows.slice(0,6).map(r => '<tr><td class="num">'+esc(r.round)+'</td><td class="num">'+esc(r.qno)+'</td><td class="q">'+esc(r.text.length>130 ? r.text.slice(0,130)+'…' : r.text)+(r.img ? ' <span class="pill">image</span>' : '')+'</td><td>'+esc(r.ans)+'</td></tr>').join('') + (rows.length > 6 ? '<tr><td colspan="4" class="num">+ '+(rows.length-6)+' more</td></tr>' : '');
+  $('previewWrap').hidden = !rows.length; $('btnStart').disabled = !rows.length;
+}
+$('setLoad').onclick = () => $('setFile').click();
+$('setFile').onchange = e => { const f = e.target.files[0]; if(f) readSetFile(f); e.target.value = '' };
+$('setSample').onclick = () => { $('setName').value = 'Sample set'; loadTable(SAMPLE, null, true) };
+$('setPaste').onclick = () => { $('pasteModal').hidden = false; $('pasteArea').value = ''; $('pasteArea').focus() };
+$('pasteCancel').onclick = () => $('pasteModal').hidden = true;
+$('pasteOk').onclick = () => { const t = $('pasteArea').value; if(t.trim()) loadTable(parseDelimited(t)); $('pasteModal').hidden = true };
+dropZone($('setDrop'), () => !$('tab-play').hidden && !$('pSetup').hidden, files => files[0] && readSetFile(files[0]));
+
+function dropZone(el, active, onFiles){
+  ['dragenter','dragover'].forEach(ev => document.addEventListener(ev, e => { if(!active()) return; e.preventDefault(); el.classList.add('over') }));
+  document.addEventListener('dragleave', e => { if(e.target === el || !e.relatedTarget) el.classList.remove('over') });
+  document.addEventListener('drop', e => { if(!active()) return; e.preventDefault(); el.classList.remove('over'); const fs = [...(e.dataTransfer && e.dataTransfer.files || [])]; if(fs.length) onFiles(fs) });
+}
+
+/* image URL helpers: Drive share links → direct image, imgur page → i.imgur */
+function imgSrc(u){
+  if(!u) return '';
+  let m = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/);
+  if(m) return 'https://drive.google.com/thumbnail?id='+m[1]+'&sz=w1600';
+  m = u.match(/^https?:\/\/(?:www\.)?imgur\.com\/([a-zA-Z0-9]{5,8})$/); if(m) return 'https://i.imgur.com/'+m[1]+'.jpg';
+  if(/^https?:\/\//.test(u)) return u;
+  const hit = albumImages.find(im => (im.title||'').toLowerCase() === u.toLowerCase().replace(/\.[^.]+$/,''));
+  return hit ? hit.link : '';
+}
+
+/* =============================== OPPONENTS =============================== */
+const LEVELS = { Novice:{r:[20,35],w:[15,25]}, Club:{r:[35,50],w:[10,20]}, Strong:{r:[50,65],w:[5,15]}, Elite:{r:[65,80],w:[5,10]} };
+const NAMES = ['Kavya','Rohan','Meera','Arjun','Nisha','Imran','Leela','Sameer','Divya','Farhan','Priya','Vikram'];
+let opps = S.get('opps', [{name:'Kavya',r:70,p:15,w:10},{name:'Rohan',r:50,p:30,w:15},{name:'Meera',r:40,p:35,w:20}]);
+const saveOpps = () => S.set('opps', opps);
+const rnd = (a,b) => a + Math.floor(Math.random()*((b-a)/5+1))*5;
+function generate(level){
+  const names = NAMES.slice().sort(() => Math.random()-.5);
+  opps = opps.map((o,i) => { const lv = LEVELS[level === 'Mixed' ? Object.keys(LEVELS)[Math.floor(Math.random()*4)] : level];
+    const r = rnd(lv.r[0], lv.r[1]), w = rnd(lv.w[0], lv.w[1]); return { name:names[i], r, w, p: Math.max(0, 100-r-w), lvl: level === 'Mixed' ? undefined : level } });
+  saveOpps(); renderOpps();
+}
+function renderOpps(){
+  $('opps').innerHTML = opps.map((o,i) => {
+    const sum = o.r+o.p+o.w, left = 100-sum;
+    const step = (k,lab) => '<span>'+lab+'</span><span class="ctl"><button data-i="'+i+'" data-k="'+k+'" data-d="-5" aria-label="'+lab+' minus 5">−</button><output>'+o[k]+'%</output><button data-i="'+i+'" data-k="'+k+'" data-d="5" aria-label="'+lab+' plus 5">+</button></span>';
+    const tot = Math.max(100, sum);
+    return '<div class="opp"><input type="text" value="'+esc(o.name)+'" data-name="'+i+'" aria-label="Opponent name">'
+      + '<div class="stepper">'+step('r','Right')+step('p','Pass')+step('w','Wrong')+'</div>'
+      + '<div class="bar3"><i class="r" style="width:'+(o.r/tot*100)+'%"></i><i class="p" style="width:'+((o.p+Math.max(0,left))/tot*100)+'%"></i><i class="w" style="width:'+(o.w/tot*100)+'%"></i></div>'
+      + '<span class="hint">'+o.r+'-'+o.p+'-'+o.w+(left > 0 ? ' · remaining '+left+'% counts as pass' : left < 0 ? ' · over 100%, scaled down' : '')+'</span></div>';
+  }).join('');
+}
+$('opps').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if(!b) return; const o = opps[+b.dataset.i]; o[b.dataset.k] = Math.max(0, Math.min(100, o[b.dataset.k] + (+b.dataset.d))); saveOpps(); renderOpps() });
+$('opps').addEventListener('change', e => { const t = e.target; if(t.dataset.name != null){ opps[+t.dataset.name].name = t.value.trim() || 'Player'; saveOpps() } });
+$('genBtn').onclick = () => generate($('genLevel').value);
+let mode = 'free';
+function setMode(m){ mode = m; $('modeFree').classList.toggle('cur', m==='free'); $('modeSim').classList.toggle('cur', m==='sim'); $('simCfg').hidden = m !== 'sim'; $('freeInfo').hidden = m !== 'free'; $('btnStart').textContent = m === 'sim' ? 'Start simulated run' : 'Start free play' }
+$('modeFree').onclick = () => setMode('free'); $('modeSim').onclick = () => setMode('sim');
+function roll(o){ const tot = Math.max(100, o.r+o.p+o.w); const x = Math.random()*tot; return x < o.r ? 'right' : x < o.r+o.w ? 'wrong' : 'pass' }
+
+/* =============================== RUN =============================== */
+let run = null;
+let timer = { left:0, total:0, id:null, paused:false };
+function showPlay(v){ ['pSetup','pRun','pResults'].forEach(x => $(x).hidden = x !== v); window.scrollTo(0,0) }
+
+function startRun(indices){
+  if(!indices){ const r = $('selRound').value; indices = rows.map((_,i) => i).filter(i => r === '*' || rows[i].round === r) }
+  indices = indices.slice();
+  if($('chkShuffle').checked) for(let i=indices.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [indices[i],indices[j]] = [indices[j],indices[i]] }
+  S.set('play', { t:$('inpTimer').value, s:$('chkShuffle').checked, mode, pts:[$('ptDirect').value,$('ptPass').value,$('ptWrong').value], link:$('setLink').value });
+  run = { id: Date.now().toString(36), mode, list: indices, pos:0, marks:{}, revealed:{}, setName: $('setName').value.trim(), link: $('setLink').value.trim() };
+  if(mode === 'sim'){
+    const players = [{ name:'You', me:true }].concat(opps.map(o => Object.assign({}, o)));
+    const seats = players.map((_,i) => i).sort(() => Math.random()-.5);
+    run.sim = { players, seats, pts: players.map(() => 0), stats: players.map(() => ({r:0,w:0,p:0})), q:null,
+      P: { direct: +$('ptDirect').value || 0, pass: +$('ptPass').value || 0, wrong: Math.abs(+$('ptWrong').value || 0) } };
+  }
+  showPlay('pRun'); renderQ();
+}
+const cur = () => rows[run.list[run.pos]];
+function logResult(idx, result){
+  const key = run.id+':'+idx;
+  pending = pending.filter(r => r.id !== key);
+  if(result === 'Wrong' || result === 'Missed'){
+    const q = rows[idx];
+    pending.push({ id:key, date: todayISO(), setName: run.setName, link: run.link, round:q.round, qno:q.qno, question:q.text,
+      imageLink: q.img, trial: $('trial').value.trim(), answer: q.ans, topic: $('tagTopic').value.trim() || q.topic, subtopic: $('tagSub').value.trim() || q.sub, result });
+  }
+  savePending();
+}
+
+function renderQ(){
+  const q = cur(), idx = run.list[run.pos], sim = run.mode === 'sim';
+  $('pBadge').textContent = 'Q'+q.qno; $('pRound').textContent = 'Round '+q.round;
+  $('pMeta').innerHTML = '<b>'+(run.pos+1)+'</b> / '+run.list.length+(run.setName ? ' · '+esc(run.setName) : '');
+  $('pText').textContent = q.text || '(no question text)';
+  const src = imgSrc(q.img);
+  $('pImg').hidden = !src; if(src){ $('pImg').src = src; $('pImg').onerror = () => { $('pImg').hidden = true } }
+  $('pImgLink').hidden = !q.img || !/^https?:/.test(q.img); if(q.img) $('pImgLink').href = q.img;
+  $('pAnsText').textContent = q.ans || '(no answer given)';
+  if(q.topic) $('tagTopic').value = q.topic; if(q.sub) $('tagSub').value = q.sub;
+  $('bPrev').hidden = sim; $('dots').hidden = sim; $('seats').hidden = !sim; $('simLog').hidden = !sim;
+  $('bNext').textContent = run.pos === run.list.length-1 ? 'Finish →' : 'Next →';
+  if(sim){ startSimQuestion(); return }
+  $('trial').value = '';
+  const rev = !!run.revealed[idx];
+  $('pAnswer').hidden = !rev; $('gReveal').hidden = rev; $('gMark').hidden = !rev; $('gJudge').hidden = true; $('bPass').hidden = true; $('bMissed').hidden = false; $('trialWrap').hidden = rev;
+  $('bPrev').disabled = run.pos === 0; $('bNext').disabled = false;
+  renderScoreFree(); renderDots();
+  if(rev) stopTimer(true); else { startTimer(); if(!('ontouchstart' in window)) $('trial').focus() }
+}
+function renderScoreFree(){
+  const m = run.list.map(i => run.marks[i]).filter(Boolean);
+  $('pScore').innerHTML = m.filter(x => x==='y').length+' <small>correct · '+m.filter(x => x==='n').length+' wrong · '+m.filter(x => x==='m').length+' missed</small>';
+}
+function renderDots(){ $('dots').innerHTML = run.list.map((i,k) => '<button data-k="'+k+'" class="'+(run.marks[i]||'')+(k===run.pos?' cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>').join('') }
+$('dots').onclick = e => { const b = e.target.closest('button'); if(b) go(+b.dataset.k) };
+function go(k){ if(k < 0 || k >= run.list.length) return; run.pos = k; renderQ() }
+function next(){ if(run.pos < run.list.length-1) go(run.pos+1); else finish() }
+
+/* ---------- free play actions ---------- */
+function revealFree(){ const idx = run.list[run.pos]; if(run.revealed[idx]) return; run.revealed[idx] = true; stopTimer(true); renderQ() }
+function markFree(m){
+  const idx = run.list[run.pos]; if(!run.revealed[idx]) return;
+  run.marks[idx] = m; logResult(idx, m === 'y' ? 'Correct' : m === 'n' ? 'Wrong' : 'Missed'); next();
+}
+
+/* ---------- simulated run ---------- */
+let simToken = 0;
+const sleep = ms => new Promise(r => setTimeout(r, REDUCED ? 0 : ms));
+function startSimQuestion(){
+  const s = run.sim, dirSeat = run.pos % s.seats.length;
+  const order = s.seats.map((_,k) => s.seats[(dirSeat + k) % s.seats.length]);   // player indices, directed first
+  s.q = { order, step:0, attempts:[], phase:'sim', revealed:false, meDone:false, judged:false };
+  $('trial').value = '';
+  renderSim(); simAdvance(++simToken);
+}
+async function simAdvance(tok){
+  const s = run.sim, q = s.q;
+  while(q.phase === 'sim'){
+    if(q.step >= q.order.length){ q.phase = 'done'; q.revealed = true; break }
+    const pi = q.order[q.step], p = s.players[pi];
+    if(p.me){ q.phase = 'me'; renderSim(); startTimer(); if(!('ontouchstart' in window)) $('trial').focus(); return }
+    q.cur = pi; renderSim(); await sleep(750); if(tok !== simToken) return;
+    const res = roll(p); applySim(pi, res); q.cur = null; q.step++;
+    if(res === 'right'){ q.revealed = true; q.phase = q.meDone ? 'done' : 'judge' }
+    renderSim(); if(q.phase === 'sim') await sleep(250); if(tok !== simToken) return;
+  }
+  stopTimer(true); renderSim();
+}
+function applySim(pi, res){
+  const s = run.sim, q = s.q, P = s.P;
+  const pts = res === 'right' ? (q.step === 0 ? P.direct : P.pass) : res === 'wrong' ? -P.wrong : 0;
+  s.pts[pi] += pts; s.stats[pi][res === 'right' ? 'r' : res === 'wrong' ? 'w' : 'p']++;
+  q.attempts.push({ pi, res, pts, direct: q.step === 0 });
+}
+function meAct(act){              // act: reveal | correct | wrong | pass
+  const s = run.sim, q = s.q; if(!q) return;
+  const idx = run.list[run.pos], meI = 0;
+  if(q.phase === 'me'){
+    if(act === 'reveal' && !q.revealed){ q.revealed = true; stopTimer(true); renderSim(); return }
+    if(act === 'pass' && !q.revealed){ stopTimer(true); applySim(meI,'pass'); run.marks[idx] = 'm'; logResult(idx,'Missed'); q.meDone = true; q.step++; q.phase = 'sim'; renderSim(); simAdvance(++simToken); return }
+    if(q.revealed && (act === 'correct' || act === 'wrong')){
+      applySim(meI, act === 'correct' ? 'right' : 'wrong'); q.meDone = true; q.step++;
+      run.marks[idx] = act === 'correct' ? 'y' : 'n'; logResult(idx, act === 'correct' ? 'Correct' : 'Wrong');
+      if(act === 'correct'){ q.phase = 'done'; renderSim() } else { q.phase = 'sim'; renderSim(); simAdvance(++simToken) }
+    }
+  } else if(q.phase === 'judge' && (act === 'correct' || act === 'pass')){
+    run.marks[idx] = act === 'correct' ? 'y' : 'm'; logResult(idx, act === 'correct' ? 'Correct' : 'Missed');
+    q.judged = true; q.phase = 'done'; renderSim();
+  }
+}
+function renderSim(){
+  const s = run.sim, q = s.q, P = s.P;
+  const dirPi = q.order[0];
+  const last = {}; q.attempts.forEach(a => last[a.pi] = a);
+  $('seats').innerHTML = s.seats.map((pi,k) => { const p = s.players[pi], a = last[pi];
+    const st = q.cur === pi ? 'thinking…' : (q.phase === 'me' && p.me) ? 'your turn' : a ? (a.res === 'right' ? 'right +'+a.pts : a.res === 'wrong' ? 'wrong'+(a.pts ? ' '+a.pts : '') : 'pass') : '';
+    return '<div class="seat'+(p.me?' me':'')+(pi===dirPi?' dir':'')+((q.cur===pi || (q.phase==='me'&&p.me))?' turn':'')+'"><span class="meta">Seat '+(k+1)+(pi===dirPi?' · directed':'')+'</span><span class="nm">'+esc(p.name)+'</span><span class="pts">'+s.pts[pi]+'</span><span class="st">'+st+'</span></div>' }).join('');
+  $('simLog').innerHTML = q.attempts.map(a => { const p = s.players[a.pi];
+    return '<div><b>'+esc(p.name)+'</b><span class="'+(a.res==='right'?'r':a.res==='wrong'?'w':'p')+'">'+(a.res==='right' ? 'answered correctly'+(a.direct?' (direct)':' on the pass')+' · +'+a.pts : a.res==='wrong' ? 'answered wrong'+(a.pts?' · '+a.pts:'') : 'passed')+'</span></div>' }).join('')
+    + (q.phase === 'done' && !q.attempts.some(a => a.res === 'right') ? '<div><span class="p">Nobody got it.</span></div>' : '');
+  const meTurn = q.phase === 'me';
+  $('pAnswer').hidden = !q.revealed;
+  $('trialWrap').hidden = !(meTurn && !q.revealed);
+  $('gReveal').hidden = !(meTurn && !q.revealed); $('bPass').hidden = false;
+  $('gMark').hidden = !(meTurn && q.revealed); $('bMissed').hidden = true;
+  $('gJudge').hidden = q.phase !== 'judge';
+  $('bNext').disabled = q.phase !== 'done';
+  const meI = 0; const lead = Math.max(...s.pts);
+  $('pScore').innerHTML = s.pts[meI]+' <small>you · leader '+lead+'</small>';
+}
+
+/* ---------- timer ---------- */
+let audioCtx = null;
+function beep(){ try{ audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)(); const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.value = 660; o.connect(g); g.connect(audioCtx.destination); g.gain.setValueAtTime(.15, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime+.5); o.start(); o.stop(audioCtx.currentTime+.5) }catch(e){} }
+function startTimer(){
+  stopTimer();
+  const t = Math.max(0, parseInt($('inpTimer').value) || 0);
+  timer.total = t; timer.left = t; timer.paused = false;
+  $('bPause').hidden = !t; $('timerBar').hidden = !t; $('bPause').textContent = 'Pause';
+  if(!t){ $('pClock').textContent = ''; return }
+  drawTimer();
+  timer.id = setInterval(() => {
+    if(timer.paused) return;
+    timer.left = Math.max(0, timer.left - .1); drawTimer();
+    if(timer.left <= 0){ stopTimer(); beep(); if(run.mode === 'sim') meAct('pass'); else revealFree() }
+  }, 100);
+}
+function stopTimer(hide){ if(timer.id){ clearInterval(timer.id); timer.id = null } if(hide){ $('pClock').textContent = ''; $('timerBar').hidden = true; $('bPause').hidden = true } }
+function drawTimer(){ const f = timer.left/timer.total, low = timer.left <= Math.min(5, timer.total*.25);
+  $('timerFill').style.transform = 'scaleX('+f+')'; $('timerBar').classList.toggle('low', low); $('pClock').textContent = Math.ceil(timer.left)+'s'; $('pClock').classList.toggle('low', low) }
+$('bPause').onclick = () => { if(!timer.id) return; timer.paused = !timer.paused; $('bPause').textContent = timer.paused ? 'Resume' : 'Pause' };
+
+/* ---------- results ---------- */
+async function finish(){
+  stopTimer(true); simToken++;
+  const list = run.list, lab = { y:['y','Correct'], n:['n','Wrong'], m:['m','Missed'] };
+  const c = list.filter(i => run.marks[i] === 'y').length;
+  if(run.mode === 'sim'){
+    const s = run.sim; const order = s.players.map((_,i) => i).sort((a,b) => s.pts[b]-s.pts[a]);
+    $('rLabel').textContent = 'Your points'; $('rScore').innerHTML = s.pts[0]+' <small>· place '+(order.indexOf(0)+1)+' of 4</small>';
+    $('rStand').innerHTML = order.map(pi => '<tr><td class="num">'+(s.seats.indexOf(pi)+1)+'</td><td>'+(pi===0?'<b>You</b>':esc(s.players[pi].name)+' <span class="hint">'+s.players[pi].r+'-'+s.players[pi].p+'-'+s.players[pi].w+'</span>')+'</td><td class="num"><b>'+s.pts[pi]+'</b></td><td class="num">'+s.stats[pi].r+'</td><td class="num">'+s.stats[pi].w+'</td><td class="num">'+s.stats[pi].p+'</td></tr>').join('');
+    $('rStandWrap').hidden = false;
+  } else {
+    $('rLabel').textContent = 'Correct'; $('rScore').innerHTML = c+' <small>/ '+list.length+'</small>'; $('rStandWrap').hidden = true;
+  }
+  $('rAll').innerHTML = list.map(i => { const q = rows[i], m = lab[run.marks[i]] || ['','Not reached'];
+    return '<tr><td class="num">'+esc(q.round)+'</td><td class="num">'+esc(q.qno)+'</td><td><span class="pill '+m[0]+'">'+m[1]+'</span></td><td class="q">'+esc(q.text)+'</td><td><b>'+esc(q.ans)+'</b></td></tr>' }).join('');
+  const missed = list.filter(i => run.marks[i] === 'n' || run.marks[i] === 'm');
+  $('rRetry').disabled = !missed.length;
+  showPlay('pResults');
+  const logged = pending.filter(r => r.id.startsWith(run.id+':')).length;
+  if(!logged){ note('rSync', 'Nothing to save from this set.', 'ok'); return }
+  if(cfg.autoSync && msAccount && cfg.fileId && cfg.headers.length){
+    note('rSync', 'Saving '+logged+' wrong/missed questions to '+esc(cfg.fileName)+'…');
+    const r = await syncPending(); note('rSync', esc(r.msg || ''), r.ok ? 'ok' : 'err');
+  } else {
+    note('rSync', logged+' wrong/missed questions are waiting on the <a href="#database">Database</a> tab. '+(cfg.autoSync ? 'Connect your Excel there to save automatically after each set.' : 'Press “Save to Excel now” there when ready.'));
+  }
+}
+$('rRetry').onclick = () => startRun(run.list.filter(i => run.marks[i] === 'n' || run.marks[i] === 'm'));
+$('rAgain').onclick = () => startRun(run.list.slice());
+$('rSetup').onclick = () => showPlay('pSetup');
+$('btnStart').onclick = () => startRun();
+
+/* ---------- buttons + keys ---------- */
+const act = a => { if(!run || $('pRun').hidden) return;
+  if(run.mode === 'sim'){ if(a === 'next'){ if(run.sim.q.phase === 'done') next() } else meAct(a === 'missed' ? 'pass' : a); return }
+  if(a === 'reveal') revealFree(); else if(a === 'correct') markFree('y'); else if(a === 'wrong') markFree('n'); else if(a === 'missed' || a === 'pass') markFree('m'); else if(a === 'next') next(); else if(a === 'prev') go(run.pos-1);
+};
+$('bReveal').onclick = () => act('reveal'); $('bPass').onclick = () => act('pass');
+$('bCorrect').onclick = () => act('correct'); $('bWrong').onclick = () => act('wrong'); $('bMissed').onclick = () => act('missed');
+$('bKnew').onclick = () => act('correct'); $('bDidnt').onclick = () => act('pass');
+$('bNext').onclick = () => act('next'); $('bPrev').onclick = () => act('prev'); $('bEnd').onclick = finish;
+$('trial').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); act('reveal'); $('trial').blur() } });
+document.addEventListener('keydown', e => {
+  if(!$('pasteModal').hidden){ if(e.key === 'Escape') $('pasteModal').hidden = true; return }
+  if($('tab-play').hidden || $('pRun').hidden || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if(k === ' ' || k === 'enter'){ e.preventDefault(); const hidden = $('pAnswer').hidden; act(hidden ? 'reveal' : 'next') }
+  else if(k === 'c' || k === 'y') act('correct');
+  else if(k === 'w' || k === 'n') act('wrong');
+  else if(k === 'm' || k === 'p') act('missed');
+  else if(e.key === 'ArrowRight') act('next');
+  else if(e.key === 'ArrowLeft') act('prev');
+});
+
+/* =============================== BOOT =============================== */
+$('myUrl').textContent = PAGE_URL; $('myUrl2').textContent = PAGE_URL;
+$('autoSync').checked = cfg.autoSync !== false;
+const pl = S.get('play', null);
+if(pl){ $('inpTimer').value = pl.t; $('chkShuffle').checked = pl.s; if(pl.pts){ $('ptDirect').value = pl.pts[0]; $('ptPass').value = pl.pts[1]; $('ptWrong').value = pl.pts[2] } if(pl.link) $('setLink').value = pl.link; setMode(pl.mode || 'free') } else setMode('free');
+const savedSet = S.get('set', null);
+if(savedSet && savedSet.table){ $('setName').value = savedSet.name || ''; loadTable(savedSet.table) } else { $('setName').value = 'Sample set'; loadTable(SAMPLE, null, true) }
+bindDiscard(); renderOpps(); renderLists(); renderMap(); renderPending(); renderImgur(); route();
+$('wbName').value = cfg.fileName || '';
+if(cfg.sheet) $('wbSheet').innerHTML = '<option>'+esc(cfg.sheet)+'</option>';
+$('wbTable').innerHTML = '<option value="">'+(cfg.table ? esc(cfg.table) : 'No table — add below last row')+'</option>';
+if(cfg.table) $('wbTable').options[0].value = cfg.table;
+msInit().then(() => { if(msAccount && cfg.fileId) loadSheets(true) });
+if(imgurOn()) loadAlbums();
+})();
+</script>
+</body>
+</html>
